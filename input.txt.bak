@@ -1,0 +1,13 @@
+START
+integer x, b = 10, c = 2.
+character n = "name".
+do
+show "Hello! Welcome to Prose Language!".
+show x.
+x = b + c.
+b = 10.
+show x.
+show "result = [b]".
+show "result = [[c]]".
+show n.
+done.

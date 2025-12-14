@@ -1,0 +1,264 @@
+%{
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* functions from flex */
+extern char *yytext;
+extern int yylex(void);
+extern int yylineno;
+extern void yyerror(const char *s);
+extern void yyrestart(FILE *);
+
+/* buffer functions for line-by-line parsing */
+extern void *yy_scan_string(const char *);
+extern void yy_delete_buffer(void *);
+
+/* Simple symbol table */
+typedef enum { TYPE_INT, TYPE_CHAR } vtype;
+typedef struct Var {
+    char *name;
+    vtype type;
+    int ival;
+    char *sval; /* for character/string variables */
+    struct Var *next;
+} Var;
+
+Var *symtab = NULL;
+
+/* symbol helpers */
+Var *find_var(const char *name){
+    for(Var *v = symtab; v; v = v->next)
+        if(strcmp(v->name,name)==0) return v;
+    return NULL;
+}
+Var *new_var(const char *name, vtype t){
+    Var *v = malloc(sizeof(Var));
+    v->name = strdup(name);
+    v->type = t;
+    v->ival = 0;
+    v->sval = NULL;
+    v->next = symtab;
+    symtab = v;
+    return v;
+}
+void set_int(const char *name, int val){
+    Var *v = find_var(name);
+    if(!v) v = new_var(name, TYPE_INT);
+    if(v->type != TYPE_INT) {
+        fprintf(stderr, "Type error: %s not integer\n", name);
+        return;
+    }
+    v->ival = val;
+}
+void set_str(const char *name, const char *s){
+    Var *v = find_var(name);
+    if(!v) v = new_var(name, TYPE_CHAR);
+    if(v->type != TYPE_CHAR) {
+        fprintf(stderr, "Type error: %s not character\n", name);
+        return;
+    }
+    free(v->sval);
+    v->sval = strdup(s);
+}
+char *get_str(const char *name){
+    Var *v = find_var(name);
+    if(!v) return NULL;
+    if(v->type == TYPE_CHAR) return v->sval;
+    /* convert int to string */
+    char tmp[64]; snprintf(tmp,sizeof(tmp), "%d", v->ival);
+    return strdup(tmp);
+}
+int get_int(const char *name, int *ok){
+    Var *v = find_var(name);
+    if(!v){ *ok = 0; return 0; }
+    if(v->type == TYPE_INT){ *ok = 1; return v->ival; }
+    /* if char, attempt to convert? we'll say not convertible */
+    *ok = 0; return 0;
+}
+
+/* string formatter: replaces [id] and [[id]] as described */
+char *format_string(const char *s){
+    size_t len = strlen(s);
+    char *out = malloc(len*4 + 32); /* generous */
+    out[0]=0;
+    for(const char *p=s; *p; ){
+        if(p[0]=='[' && p[1]=='['){
+            /* pattern [[id]] -> output [value] */
+            const char *q = p+2;
+            char id[256]; int i=0;
+            while(*q && *q!=']' && i<255){ id[i++]=*q++; }
+            id[i]=0;
+            /* require closing ]] */
+            if(*q==']' && q[1]==']'){
+                int ok; int val = get_int(id,&ok);
+                char tmp[128];
+                if(ok) snprintf(tmp,sizeof(tmp),"[%d]", val);
+                else {
+                    char *sval = get_str(id);
+                    if(sval){ snprintf(tmp,sizeof(tmp),"[%s]", sval); free(sval); }
+                    else snprintf(tmp,sizeof(tmp),"[undef]");
+                }
+                strcat(out,tmp);
+                p = q+2;
+                continue;
+            } else {
+                /* not well-formed, copy literal [[ */
+                strncat(out, "[[", 2);
+                p += 2;
+                continue;
+            }
+        } else if(p[0]=='['){
+            /* pattern [id] -> output value without brackets */
+            const char *q = p+1;
+            char id[256]; int i=0;
+            while(*q && *q!=']' && i<255){ id[i++]=*q++; }
+            id[i]=0;
+            if(*q==']'){
+                int ok; int val = get_int(id,&ok);
+                char tmp[128];
+                if(ok) snprintf(tmp,sizeof(tmp),"%d", val);
+                else {
+                    char *sval = get_str(id);
+                    if(sval){ snprintf(tmp,sizeof(tmp),"%s", sval); free(sval); }
+                    else snprintf(tmp,sizeof(tmp),"undef");
+                }
+                strcat(out,tmp);
+                p = q+1;
+                continue;
+            } else {
+                /* not closed, copy literal '[' */
+                strncat(out, "[", 1);
+                p++;
+                continue;
+            }
+        } else {
+            /* copy normal char */
+            size_t curlen = strlen(out);
+            out[curlen] = *p;
+            out[curlen+1] = '\0';
+            p++;
+        }
+    }
+    return out;
+}
+
+/* helper to free yylval strings created by lexer */
+void free_yylval_str(char *s){ if(s) free(s); }
+
+%}
+
+/* yylval types */
+%union {
+    int ival;
+    char *sval;
+}
+
+/* tokens */
+%token <sval> ID
+%token <sval> STRING
+%token <ival> NUMBER
+
+%token START DO DONE INTEGER CHARACTER SHOW NEWLINE
+
+%left '+' '-'
+%left '*' '/'
+%left UMINUS
+%type <ival> expr
+%%
+
+/* a statement per line (since we feed one line at a time) */
+line_stmt:
+      START                    { /* can be just acknowledged */ }
+    | INTEGER decl_list '.'     { /* integer declarations handled in action */ }
+    | CHARACTER cdecl_list '.'  { /* char declarations handled */ }
+    | DO                        { /* begin do-block: we just ignore here; statements executed as they appear */ }
+    | DONE '.'                   { /* end do-block � nothing special for line-by-line mode */ }
+    | SHOW show_arg '.'         { /* printing handled in action */ }
+    | ID '=' expr '.'           { /* assignment */ }
+    | NEWLINE                   { /* empty line */ }
+    ;
+
+decl_list:
+      var_init_list
+    ;
+
+var_init_list:
+      var_init
+    | var_init_list ',' var_init
+    ;
+
+var_init:
+      ID                      { /* declaration without init -> create var (int) */ 
+                                if(find_var($1)==NULL) new_var($1, TYPE_INT); free_yylval_str($1);
+                              }
+    | ID '=' NUMBER           { if(find_var($1)==NULL) new_var($1, TYPE_INT); set_int($1, $3); free_yylval_str($1); }
+    ;
+
+cdecl_list:
+      cvar_init_list
+    ;
+
+cvar_init_list:
+      cvar_init
+    | cvar_init_list ',' cvar_init
+    ;
+
+cvar_init:
+      ID                      { if(find_var($1)==NULL) new_var($1, TYPE_CHAR); free_yylval_str($1); }
+    | ID '=' STRING           { if(find_var($1)==NULL) new_var($1, TYPE_CHAR); set_str($1, $3); free_yylval_str($1); free_yylval_str($3); }
+    ;
+
+/* show argument can be STRING or ID */
+show_arg:
+      STRING                  { char *fmt = format_string($1); printf("%s\n", fmt); free(fmt); free_yylval_str($1); }
+    | ID                      { Var *v = find_var($1); if(!v) printf("undef\n"); else {
+                                    if(v->type == TYPE_INT) printf("%d\n", v->ival);
+                                    else printf("%s\n", v->sval? v->sval : "");
+                                } free_yylval_str($1);
+                              }
+    ;
+
+/* assignments & expressions */
+expr:
+      NUMBER                  { $$ = $1; }
+    | ID                      { int ok; int val = get_int($1,&ok); if(!ok){ yyerror("variable not integer or undefined"); $$ = 0; } else $$ = val; free_yylval_str($1); }
+    | expr '+' expr           { $$ = $1 + $3; }
+    | expr '-' expr           { $$ = $1 - $3; }
+    | expr '*' expr           { $$ = $1 * $3; }
+    | expr '/' expr           { if($3==0){ yyerror("division by zero"); $$ = 0; } else $$ = $1 / $3; }
+    | '-' expr %prec UMINUS   { $$ = -$2; }
+    | '(' expr ')'            { $$ = $2; }
+    ;
+
+%%
+
+/* error reporting */
+void yyerror(const char *s){
+	fprintf(stderr, "Parse error: %s\n", s);
+}
+
+/* main: read input.txt line-by-line, parse/execute each line */
+int main(int argc, char **argv){
+    FILE *f;
+    if(argc>1) f = fopen(argv[1], "r");
+    else f = fopen("input.txt", "r");
+
+    if(!f){ fprintf(stderr, "Failed to open input file\n"); return 1; }
+
+    char line[2048];
+    printf("Prose Language interpreter (line-by-line mode)\n\n");
+
+    while(fgets(line, sizeof(line), f)){
+        /* skip lines that only contain newline */
+        if(line[0]=='\n' || line[0]=='\0') continue;
+        printf("[%s]\n", line);
+        /* feed the single line to lexer/parser */
+        void *buf = yy_scan_string(line);
+        yyparse();
+        yy_delete_buffer(buf);
+    }
+
+    fclose(f);
+    return 0;
+}

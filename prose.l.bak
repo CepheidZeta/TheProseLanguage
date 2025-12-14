@@ -1,0 +1,56 @@
+%{
+#include "prose.tab.h"
+#include <stdlib.h>
+#include <string.h>
+
+/* helper to allocate strings for yylval */
+char *strdup_local(const char *s){
+    char *r = malloc(strlen(s)+1);
+    if(r) strcpy(r,s);
+    return r;
+}
+%}
+
+%%
+
+"start"             { return START; }
+"do"                { return DO; }
+"done"              { return DONE; }
+"integer"           { return INTEGER; }
+"character"         { return CHARACTER; }
+"show"              { return SHOW; }
+
+\"([^"\\]|\\.)*\"  {
+                        /* copy string literal without enclosing quotes, handle escaped chars simply */
+                        int len = yyleng;
+                        char *s = strdup_local(yytext+1); /* naive - includes trailing " and possibly escape sequences */
+                        s[len-2] = '\0'; /* remove closing quote */
+                        yylval.sval = s;
+                        return STRING;
+                    }
+
+[0-9]+              { yylval.ival = atoi(yytext); return NUMBER; }
+
+[a-zA-Z_][a-zA-Z0-9_]* { yylval.sval = strdup_local(yytext); return ID; }
+
+[ \t\r]+          { /* ignore spaces, tabs, CR */ }
+
+"\n"                { return NEWLINE; }
+
+","                 { return ','; }
+"."                 { return '.'; }
+"="                 { return '='; }
+"("                 { return '('; }
+")"                 { return ')'; }
+"["                 { return '['; }
+"]"                 { return ']'; }
+"+"                 { return '+'; }
+"-"                 { return '-'; }
+"*"                 { return '*'; }
+"/"                 { return '/'; }
+
+.                  { /* unknown single char - return it so parser can decide or report */ return yytext[0]; }
+
+%%
+
+int yywrap() { return 1; }

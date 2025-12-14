@@ -1,0 +1,19 @@
+start
+
+integer x, b = 10, c = 2+3.
+character n = "name".
+
+do
+
+show "Hello! Welcome to Prose Language".
+show x.
+x = (13 + 4)*12.
+b = c.
+show x.
+show "x = (13+4)*12 = [x].".
+show "[b] --> b | [c] --> c | [x] --> x | [n] ---> n.".
+show "result = [[c]]".
+show n.
+show "This is the end of the text file".
+
+done.
