@@ -70,8 +70,11 @@
 #include <string.h>
 #include <stdarg.h>
 
+#define MAX 10000
+
 extern int line_number;
 void yyerror(const char *s);
+
 int yylex();
 extern FILE *yyin;
 
@@ -84,27 +87,16 @@ struct symbol {
 int sym_count = 0;
 
 int find_id(char *n) {
+
     for(int i=0;i<sym_count;i++)
         if(strcmp(sym[i].name,n)==0) return i;
     return -1;
 }
 
-/* ======================
-   Code emission helpers
-   ====================== */
-char data_section[8192] = "";
+
+
 char code_section[8192] = "";
 char binary_section[8192] = "";
-
-void emit_data(const char *fmt, ...) {
-    va_list args;
-    char buf[256];
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    strcat(data_section, buf);
-    strcat(data_section, "\n");
-}
 
 void emit_code(const char *fmt, ...) {
     va_list args;
@@ -114,11 +106,18 @@ void emit_code(const char *fmt, ...) {
     va_end(args);
     strcat(code_section, buf);
     strcat(code_section, "\n");
+
 }
 
 int reg_counter = 1;
 int checker = 0;
-int new_register() { return reg_counter++; }
+int new_register() {
+    if(reg_counter > 3){
+        reg_counter = 1;
+        return reg_counter;
+    }
+    return reg_counter++;
+}
 
 void emit_data_section() {
     printf(".data\n");
@@ -130,8 +129,10 @@ void emit_data_section() {
 void emit_code_section() {
     printf("\n.code\n");
     printf("%s", code_section);
+
 }
 
+// binary and hex translation functions
 unsigned int get_var_address(const char *var) {
     for(int i=0; i<sym_count; i++)
         if(strcmp(sym[i].name, var)==0)
@@ -206,7 +207,7 @@ void emit_binary() {
 
 
 /* Line 371 of yacc.c  */
-#line 210 "prose.tab.c"
+#line 211 "prose.tab.c"
 
 # ifndef YY_NULL
 #  if defined __cplusplus && 201103L <= __cplusplus
@@ -280,7 +281,7 @@ typedef union YYSTYPE
 
 
 /* Line 387 of yacc.c  */
-#line 284 "prose.tab.c"
+#line 285 "prose.tab.c"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
@@ -308,7 +309,7 @@ int yyparse ();
 /* Copy the second part of user declarations.  */
 
 /* Line 390 of yacc.c  */
-#line 312 "prose.tab.c"
+#line 313 "prose.tab.c"
 
 #ifdef short
 # undef short
@@ -1817,7 +1818,7 @@ yyreduce:
 
 
 /* Line 1792 of yacc.c  */
-#line 1821 "prose.tab.c"
+#line 1822 "prose.tab.c"
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -2053,13 +2054,14 @@ yyreturn:
 
 
 int main(int argc,char **argv) {
-    if(argc<2) {
-        printf("Usage: %s <file>\n", argv[0]);
-        return 1;
+    if(argc >= 2) {
+        yyin = fopen(argv[1],"r");
+        if(!yyin) { perror("Cannot open file"); return 1; }
+    } else {
+        yyin = stdin;
     }
-    yyin = fopen(argv[1],"r");
-    if(!yyin) { perror("Cannot open file"); return 1; }
 
+    printf("=== PARSER ===\n");
     yyparse();
 
     printf("\n=== EDU-MIPS64 ===\n");
@@ -2072,7 +2074,8 @@ int main(int argc,char **argv) {
     return 0;
 }
 
+
 void yyerror(const char *s) {
-    fprintf(stderr, "Syntax error at line %d: %s\n", line_number, s);
-    printf("Parse error: %s\n", s);
+    printf("Syntax error at line %d: %s\n", line_number, s);
+    exit(EXIT_FAILURE);
 }
