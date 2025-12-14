@@ -206,7 +206,7 @@ IE:
           sym[sym_count].int_val = $5.val;
           sym_count++;
           if(checker != 1){
-            emit_code("2daddiu r%d, r0, #%d", $5.reg, $5.val);
+            emit_code("daddiu r%d, r0, #%d", $5.reg, $5.val);
             emit_code("sd r%d, %s(r0)", $5.reg, $3);
           }else{
              emit_code("sd r%d, %s(r0)", $5.reg, $3);

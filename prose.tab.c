@@ -1583,7 +1583,7 @@ yyreduce:
           sym[sym_count].int_val = (yyvsp[(5) - (5)].expr).val;
           sym_count++;
           if(checker != 1){
-            emit_code("2daddiu r%d, r0, #%d", (yyvsp[(5) - (5)].expr).reg, (yyvsp[(5) - (5)].expr).val);
+            emit_code("daddiu r%d, r0, #%d", (yyvsp[(5) - (5)].expr).reg, (yyvsp[(5) - (5)].expr).val);
             emit_code("sd r%d, %s(r0)", (yyvsp[(5) - (5)].expr).reg, (yyvsp[(3) - (5)].sval));
           }else{
              emit_code("sd r%d, %s(r0)", (yyvsp[(5) - (5)].expr).reg, (yyvsp[(3) - (5)].sval));
