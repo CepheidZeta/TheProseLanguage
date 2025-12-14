@@ -1,6 +1,6 @@
-# proseLanguage_backend
-Run: <br>
-<br>win_flex prose.l
-<br>win_bison -d prose.y
-<br>gcc lex.yy.c prose.tab.c -o prose.exe
-<br>./prose.exe input.txt
+For testing, simply download only two of the files:
+
+- `sample_input.txt`
+- `prose_handler.exe`
+
+Ensure that they are in the same directory/folder before running `prose_handler.exe`.
